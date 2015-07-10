@@ -1,0 +1,170 @@
+1. 准备工作
+
+ubuntu 15.04桌面版
+Hadoop-2.7.0
+jdk 1.8.45
+
+
+2. 下载好Hadoop和jdk， 验证Hadoop的完整性
+
+下载完Hadoop以后，可以先检查一下md5值，看看是否下载完整
+> md5sum hadoop-2.7.0.tar.gz
+>cat hadoop-2.7.0.tar.gz.mds
+hadoop-2.7.0.tar.gz.mds 这个文件也是从官网下载来的，一般是跟hadoop-2.7.0.tar.gz在一起
+
+如果两个值是一样的，则说明完整，否则需要重新下载
+
+
+3. 安装jdk
+
+> sudo su
+因为安装的时候需要用的root权限，所以先切换到root用户就好了
+
+> cd /usr/local/lib
+现在我把jdk安装在 /usr/local/lib 目录下,先切换到这个目录下
+
+> tar -zxvf /home/user/Downloads/jdk-8u45-linux-x64.tar.gz
+直接解压下载的jdk文件，这样就在我们所在的目录下有个 jdk1.8.0_45 的目录，里面就是解压后的jdk的文件
+
+> vim /etc/profile
+配置环境变量，可以使用gedit来编辑更加方便， 然后文件末尾加入一下内容：
+
+export JAVA_HOME=/usr/local/lib/jdk1.8.0_45
+export CLASSPATH=.:$JAVA_HOME/jre/lib/rt.jar:$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar
+export PATH=$PATH:$JAVA_HOME/bin
+
+保存退出即可
+
+一下两步是设置权限的，这样设置以后就只有root有权限修改，其他只有读的权限
+> chown root:root -R /usr/local/lib/jdk1.8.0_45
+> chmod 755 -R /usr/local/lib/jdk1.8.0_45
+
+> source /etc/profile
+使配置文件立即生效
+
+>java -version 
+看到输出java的版本信息等就说明安装成功了
+
+
+4. 安装Hadoop
+
+> su sunshine
+从root用户切回，也可以使用ctrl+d
+
+> mkdir -p ~/usr/hadoop
+创建Hadoop的安装目录
+
+> cd ~/usr/hadoop
+
+> tar -zxvf /home/sunshine/Downloads/hadoop-2.7.0.tar.gz
+解压后hadoop目录下会多出一个hadoop-2.7.0的文件夹
+
+> cd hadoop2.7.0
+
+
+5. 配置hadoop
+
+高版本后的配置文件在 hadoop2.7.0/etc/hadoop/目录下
+
+① 将core-site.xml文件内容修改成如下：
+<configuration>
+<property>
+<name>fs.default.name</name>
+<value>hdfs://localhost:9000</value>
+</property>
+</configuration>
+
+② 将mapred-site.xml文件内容修改如下：
+没有这个文件的话直接创建一个就好
+<configuration>
+<property>
+<name>mapred.job.tracker</name>
+<value>localhost:9001</value>
+</property>
+</configuration>
+
+③ 将hdfs-site.xml文件内容修改如下：
+<configuration>
+<property>
+<name>dfs.replication</name>
+<value>1</value>
+</property>
+</configuration>
+
+④ 在hadoop-env.sh文件里添加如下一条语句：
+export JAVA_HOME=/usr/local/lib/jdk1.8.0_45
+
+
+6. 安装ssh和rsync
+
+> sudo apt-get install ssh rsync
+
+6.1 配置ssh免登录
+> ssh-keygen -t dsa -f ~/.ssh/id_dsa
+执行这条命令生成ssh的公钥/私钥，执行过程中，会一些提示让输入字符，直接一路回车就可以
+
+> cat ~/.ssh/id_dsa.pub >> ~/.ssh/authorized_keys
+ssh进行远程登录的时候需要输入密码，如果用公钥/私钥方式，就不需要输入密码了, 上述方式就是设置公钥/私钥登录
+
+> ssh localhost
+第一次执行本命令，会出现一个提示，输入'yes'然后回车即可
+
+
+7. 启动hadoop
+
+> cd ~/usr/hadoop/hadoop-2.7.0
+> ./bin/hadoop namenode -format
+格式化namenode
+
+> ./sbin/start-all.sh
+启动所有节点 DataNode NameNode NodeManager SecondaryNameNode ResourceManager
+
+如果上述过程中出现错误，可能是因为jdk的配置没有配置好，检查一下是不是这个问题
+
+> jps
+检查各进程是否运行，这时，应该看到有6个java虚拟机的进程，
+分别是Jps,DataNode, NameNode, NodeManager, SecondaryNameNode, ResourceManager 看到6个是对的，表明启动成功
+如果提示'jps'没安装或者找不到，执行一次 'source/etc/profile' 即可
+
+
+8. 测试hadoop
+
+> cd ~/usr/hadoop/hadoop-2.7.0
+> ./bin/hadoop fs -put README.txt readme.txt
+这一步执行过程中出错，说readme.txt找不到，
+这是hdfs的文件路径不一样, 在hfds文件系统中路径不存在,可以先自己创建一个目录存放文件，例如：
+
+> ./bin/hadoop fs -mkdir /source
+这样就创建了一个source文件夹，现在可以把测试的文件存放到这个文件夹下, 命令如下：
+
+也可以添加一个 /,将这个文件放置在hdfs的根目录下
+> ./bin/hadoop fs -put README.txt /readme.txt
+
+> /bin/hadoop fs -put README.txt /source/readme.txt
+此时，可以通过ls命令查看，如下：
+> ./bin/hadoop fs -ls /source
+
+下面需要开始运行hadoop的例子来进行测试，不过新版本的hadoop已经不自带 hadoop-examples-1.2.1.jar了，
+所以可以自己去下载，然后放在 ~/usr/hadoop/hadoop-2.7.0目录下
+> ./bin/hadoop jar hadoop-examples-1.2.1.jar wordcount /source/readme.txt output
+
+这时候用
+> ./bin/hadoop fs -ls output
+查看后发现output文件下多了 output/_SUCCESS 和 output/part-r-00000,
+
+> ./bin/hadoop fs -cat output/part-r-00000
+这个命令查看hdfs的文件，此时可以看到处理结果了
+
+
+参考：
+http://blog.csdn.net/lizhe_dashuju/article/details/13502659
+
+hadoop的hdfs的更多命令参考：
+http://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-common/FileSystemShell.html
+
+
+
+
+
+
+
